@@ -1,5 +1,3 @@
-// TODO(smoke): add win32 support
-
 #ifndef OS_H
 #define OS_H
 
@@ -42,6 +40,7 @@ typedef int b32;
 
 // :types
 typedef void OS_WindowHandle;
+typedef void OS_DynLib;
 
 typedef enum
 {
@@ -217,6 +216,10 @@ b32 os_window_should_close(OS_WindowHandle *handle);
 void os_window_poll_events(OS_WindowHandle *handle);
 void os_window_size_get(OS_WindowHandle *handle, u32 *size);
 
+OS_DynLib *os_dynlib_load(const char *path);
+void os_dynlib_unload(OS_DynLib *handle);
+void *os_dynlib_proc_address_get(OS_DynLib *handle, const char *name);
+
 f64 os_time_get(void);
 
 OS_InputState *os_input_state_get(void);
@@ -233,6 +236,7 @@ void os_input_mouse_pos_get(f32 *mouse_pos);
 // :xlib
 #if defined(OS_XLIB)
 
+#include <dlfcn.h>
 #include <time.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -478,6 +482,18 @@ f64 os_time_get(void) {
     return (f64)(now_time.tv_sec - start_time.tv_sec) + (now_time.tv_nsec - start_time.tv_nsec) * clk_freq;
 }
 
+OS_DynLib *os_dynlib_load(const char *path) {
+    return (OS_DynLib*)dlopen(path, RTLD_LAZY);
+}
+
+void os_dynlib_unload(OS_DynLib *handle) {
+    dlclose((void*)handle);
+}
+
+void *os_dynlib_proc_address_get(OS_DynLib *handle, const char *name) {
+    return dlsym((void*)handle, name);
+}
+
 #endif // OS_XLIB
 
 // :win32
@@ -614,6 +630,18 @@ f64 os_time_get(void) {
     LARGE_INTEGER now_time;
     QueryPerformanceCounter(&now_time);
     return (f32)(now_time.QuadPart - start_time.QuadPart) * clk_freq;
+}
+
+OS_DynLib *os_dynlib_load(const char *path) {
+    return (OS_DynLib*)LoadLibrary(path);
+}
+
+void os_dynlib_unload(OS_DynLib *handle) {
+    UnloadLibrary((HMODULE)handle);
+}
+
+void *os_dynlib_proc_address_get(OS_DynLib *handle, const char *name) {
+    return GetProcAddress((HMODULE)handle, name);
 }
 
 #endif // OS_WIN32

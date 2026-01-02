@@ -4,6 +4,9 @@
 #define OS_IMPL
 #include "os.h"
 
+#define GL_INIT_IMPL
+#include "gl_init.h"
+
 int main(int argc, char *argv[]) {
     OS_WindowHandle *win = os_window_create(800, 600, "test", false);
 
