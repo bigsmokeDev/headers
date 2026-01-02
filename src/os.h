@@ -1,3 +1,6 @@
+// TODO(smoke): put some docs up here
+// TODO(smoke): add GL context creation (GLX, WGL)
+
 #ifndef OS_H
 #define OS_H
 

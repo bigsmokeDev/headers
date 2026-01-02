@@ -2,6 +2,4 @@
 `src/main.c` contains the examples for using the C headers.
 | file | used for |
 |----- |----------|
-| **os.h** | OS wrapper for windows, input, dynamic libs... |
-| **gl_init.h** | GL 3/4 context creation wrapper |
-| **gl_init_old.h** | GL 1/2 context creation wrapper |
+| **os.h** | OS wrapper for windows, input, dynamic libs, GL context creation... |
