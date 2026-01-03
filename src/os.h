@@ -277,7 +277,7 @@ static GLXFBConfig best_fb_config;
 typedef struct {
     Window win;
     Atom wm_delete_win;
-#if defined(OS_GL_OLD) || defined(OS_GL_NEW)
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
     GLXContext gl_ctx;
 #endif
 
@@ -636,6 +636,10 @@ void *os_dynlib_proc_address_get(OS_DynLib *handle, const char *name) {
 
 typedef struct {
     HWND win;
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    HDC dc;
+    HGLRC gl_ctx;
+#endif
 } OS_Win32Window;
 
 static b32 should_close;
@@ -644,6 +648,15 @@ static LRESULT CALLBACK win32_wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM
 
 static f32 clk_freq;
 static LARGE_INTEGER start_time;
+
+#if defined(OS_GL_NEW)
+typedef HGLRC (WINAPI *wglCreateContextAttribsARBProc)(HDC hdc, HGLRC hglrc, const int *attribList);
+wglCreateContextAttribsARBProc wglCreateContextAttribsARB = NULL;
+typedef HRESULT (APIENTRY* wglChoosePixelFormatARBProc)(HDC hdc, const int* piAttribIList, const FLOAT* pfAttribFList, UINT nMaxFormats, int* piFormats, UINT* nNumFormats);
+static wglChoosePixelFormatARBProc wglChoosePixelFormatARB = NULL;
+#endif
+
+static void wgl_init(OS_Win32Window *win);
 
 OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags flags) {
     OS_Win32Window *win = OS_MALLOC(sizeof *win);
@@ -679,6 +692,10 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags fl
     clk_freq = 1.0f / (f32)freq.QuadPart;
     QueryPerformanceCounter(&start_time);
 
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    wgl_init(win);
+#endif
+
     win_w = w;
     win_h = h;
 
@@ -687,6 +704,7 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags fl
 
 void os_window_destroy(OS_WindowHandle *handle) {
     OS_Win32Window *win = (OS_WindowHandle*)handle;
+    ReleaseDC(win->win, win->dc);
     DestroyWindow(win->win);
     free(handle);
 }
@@ -761,7 +779,6 @@ static LRESULT CALLBACK win32_wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM
 }
 
 void os_window_size_get(OS_WindowHandle *handle, u32 *size) {
-    OS_Win32Window *win = (OS_WindowHandle*)handle;
     size[0] = win_w;
     size[1] = win_h;
 }
@@ -770,6 +787,117 @@ f64 os_time_get(void) {
     LARGE_INTEGER now_time;
     QueryPerformanceCounter(&now_time);
     return (f32)(now_time.QuadPart - start_time.QuadPart) * clk_freq;
+}
+
+static void wgl_init(OS_Win32Window *win) {
+#if defined(OS_GL_NEW)
+
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    HWND dummy_win;
+    HDC dummy_dc;
+    HGLRC dummy_gl_ctx;
+
+    {
+        pfd.nSize = sizeof pfd;
+        pfd.nVersion = 1;
+        pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+        pfd.cColorBits = 32;
+        pfd.cAlphaBits = 8;
+        pfd.iLayerType = PFD_MAIN_PLANE;
+
+        WNDCLASS dummy_wnd_class = {0};
+        dummy_wnd_class.lpfnWndProc = DefWindowProc;
+        dummy_wnd_class.hInstance = GetModuleHandle(NULL);
+        dummy_wnd_class.lpszClassName = "dummy window class";
+        dummy_win = CreateWindow(dummy_wnd_class.lpszClassName, "dummy window", 0, 0, 0, 100, 100, 0, 0, dummy_wnd_class.hInstance, 0);
+        OS_ASSERT(dummy_dc, "failed to create win32 dummy window");
+        dummy_dc = GetDC(dummy_win);
+        OS_ASSERT(dummy_dc, "failed to get win32 dummy device context");
+
+        s32 spf_index = ChoosePixelFormat(dummy_dc, &pfd);
+        PIXELFORMATDESCRIPTOR spfd = {0};
+        DescribePixelFormat(dummy_dc, spf_index, sizeof spfd, &spfd);
+        SetPixelFormat(dummy_dc, spf_index, &spfd);
+
+        dummy_gl_ctx = wglCreateContext(dummy_dc);
+        OS_ASSERT(dummy_gl_ctx, "failed to create WGL context");
+        wglMakeCurrent(dummy_dc, dummy_gl_ctx);
+    }
+
+    wglCreateContextAttribsARB = (wglCreateContextAttribsARBProc)wglGetProcAddress("wglCreateContextAttribsARB");
+    OS_ASSERT(wglCreateContextAttribsARB, "failed to get wglCreateContextAttribsARB, make sure your hardware supports modern gl");
+    wglChoosePixelFormatARB = (wglChoosePixelFormatARBProc)wglGetProcAddress("wglChoosePixelFormatARB");
+    OS_ASSERT(wglChoosePixelFormatARB, "failed to get wglChoosePixelFormatARB");
+
+    {
+        wglMakeCurrent(dummy_dc, 0);
+        wglDeleteContext(dummy_gl_ctx);
+        ReleaseDC(dummy_win, dummy_dc);
+        DestroyWindow(dummy_win);
+    }
+
+    s32 attribs[] = {
+        0x2003, // WGL_ACCELERATION_ARB
+        0x2027, // WGL_FULL_ACCELERATION_ARB
+        0x201b, 8, // WGL_ALPHA_BITS_ARB
+        0x2022, 24, // WGL_DEPTH_BITS_ARB
+        0x2001, 1, // WGL_DRAW_TO_WINDOW_ARB
+        0x2015, 8, // WGL_RED_BITS_ARB
+        0x2017, 8, // WGL_GREEN_BITS_ARB
+        0x2019, 8, // WGL_BLUE_BITS_ARB
+        0x2013, 0x202B, // WGL_PIXEL_TYPE_ARB,  WGL_TYPE_RGBA_ARB
+        0x2010, 1, // WGL_SUPPORT_OPENGL_ARB
+        0x2014, 32, // WGL_COLOR_BITS_ARB
+        0x2011, 1, // WGL_DOUBLE_BUFFER_ARB
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
+    
+    win->dc = GetDC(win->win);
+    PIXELFORMATDESCRIPTOR pfd2 = (PIXELFORMATDESCRIPTOR){ sizeof pfd2, 1, PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER, PFD_TYPE_RGBA, 32, 8, PFD_MAIN_PLANE, 24, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    s32 pf;
+    u32 num_formats;
+    wglChoosePixelFormatARB(win->dc, attribs, 0, 1, &pf, &num_formats);
+    OS_ASSERT(num_formats, "failed to create a pixel format for WGL");
+
+    DescribePixelFormat(win->dc, pf, sizeof pf, &pfd2);
+    OS_ASSERT(SetPixelFormat(win->dc, pf, &pfd2), "failed to set WGL pixel format");
+
+    s32 ctx_attribs[] = {
+        0x2091, 3, // WGL_CONTEXT_MAJOR_VERSION_ARB
+        0x2092, 3, // WGL_CONTEXT_MINOR_VERSION_ARB
+        0x9126, 0x00000001, // WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB
+    };
+    win->gl_ctx = wglCreateContextAttribsARB(win->dc, NULL, ctx_attribs);
+    wglMakeCurrent(win->dc, win->gl_ctx);
+
+#elif defined(OS_GL_OLD)
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof pfd;
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+    pfd.cColorBits = 32;
+    pfd.cAlphaBits = 8;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+
+    win->dc = GetDC(win->win);
+    OS_ASSERT(win->dc, "failed to get win32 device context");
+
+    s32 spf_index = ChoosePixelFormat(win->dc, &pfd);
+    PIXELFORMATDESCRIPTOR spfd = {0};
+    DescribePixelFormat(win->dc, spf_index, sizeof spfd, &spfd);
+    SetPixelFormat(win->dc, spf_index, &spfd);
+
+    win->gl_ctx = wglCreateContext(win->dc);
+    OS_ASSERT(win->gl_ctx, "failed to create WGL context");
+    wglMakeCurrent(win->dc, win->gl_ctx);
+#endif
+}
+
+void os_gl_swap_buffers(OS_WindowHandle *handle) {
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    OS_Win32Window *win = (OS_WindowHandle*)handle;
+    SwapBuffers(win->dc);
+#endif
 }
 
 OS_DynLib *os_dynlib_load(const char *path) {

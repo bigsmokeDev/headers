@@ -2,9 +2,11 @@
 #include <stdlib.h>
 
 #define OS_IMPL
-#define OS_GL_OLD
-//#define OS_GL_NEW
+//#define OS_GL_OLD
+#define OS_GL_NEW
 #include "os.h"
+
+#include <GL/gl.h>
 
 int main(int argc, char *argv[]) {
     OS_WindowHandle *win = os_window_create(800, 600, "test", OS_WINDOW_FLAG_OPENGL);
@@ -23,6 +25,9 @@ int main(int argc, char *argv[]) {
             os_window_size_get(win, win_size);
             printf("%d,%d\n", win_size[0], win_size[1]);
         }
+
+        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
         os_input_update();
         os_gl_swap_buffers(win);
