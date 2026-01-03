@@ -2,13 +2,12 @@
 #include <stdlib.h>
 
 #define OS_IMPL
+#define OS_GL_OLD
+//#define OS_GL_NEW
 #include "os.h"
 
-#define GL_INIT_IMPL
-#include "gl_init.h"
-
 int main(int argc, char *argv[]) {
-    OS_WindowHandle *win = os_window_create(800, 600, "test", false);
+    OS_WindowHandle *win = os_window_create(800, 600, "test", OS_WINDOW_FLAG_OPENGL);
 
     while (!os_window_should_close(win)) {
         os_window_poll_events(win);
@@ -26,6 +25,7 @@ int main(int argc, char *argv[]) {
         }
 
         os_input_update();
+        os_gl_swap_buffers(win);
     }
 
     os_window_destroy(win);

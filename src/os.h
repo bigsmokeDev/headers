@@ -43,6 +43,11 @@ typedef int b32;
 
 // :types
 typedef void OS_WindowHandle;
+typedef enum {
+    OS_WINDOW_FLAG_RESIZABLE = (1 << 1),
+    OS_WINDOW_FLAG_OPENGL    = (1 << 2),
+} OS_WindowFlags;
+
 typedef void OS_DynLib;
 
 typedef enum
@@ -213,11 +218,15 @@ typedef struct {
 } OS_InputState;
 
 // :functions
-OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r);
+OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags flags);
 void os_window_destroy(OS_WindowHandle *handle);
 b32 os_window_should_close(OS_WindowHandle *handle);
 void os_window_poll_events(OS_WindowHandle *handle);
 void os_window_size_get(OS_WindowHandle *handle, u32 *size);
+
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+void os_gl_swap_buffers(OS_WindowHandle *handle);
+#endif
 
 OS_DynLib *os_dynlib_load(const char *path);
 void os_dynlib_unload(OS_DynLib *handle);
@@ -244,32 +253,43 @@ void os_input_mouse_pos_get(f32 *mouse_pos);
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+#include <GL/glx.h>
+#endif
+
 // globals
 static Display *dpy;
 static f64 clk_freq = 0.000000001;
 static struct timespec start_time;
 
+#if defined(OS_GL_NEW)
+typedef GLXContext(*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
+static glXCreateContextAttribsARBProc glXCreateContextAttribsARB = 0;
+//typedef void (*glXSwapIntervalEXTProc) (Display *dpy, GLXDrawable drawable, int interval);
+//glXSwapIntervalEXTProc glXSwapIntervalEXT = 0;
+#endif
+
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+static GLXFBConfig best_fb_config;
+#endif
+
 // types
 typedef struct {
     Window win;
     Atom wm_delete_win;
+#if defined(OS_GL_OLD) || defined(OS_GL_NEW)
+    GLXContext gl_ctx;
+#endif
 
     u32 w, h;
     b32 should_close;
 } OS_XlibWindow;
 
 // functions
-void os_init(void) {
-    dpy = XOpenDisplay(NULL);
-    OS_ASSERT(dpy, "failed to open X11 display");
-    clock_gettime(CLOCK_MONOTONIC, &start_time);
-}
+static XVisualInfo *glx_visual_info_get(void);
+static void glx_init(OS_XlibWindow *win, XVisualInfo *vis);
 
-void os_uninit(void) {
-    XCloseDisplay(dpy);
-}
-
-OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r) {
+OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags flags) {
     if (!dpy) {
         dpy = XOpenDisplay(NULL);
         OS_ASSERT(dpy, "failed to open X11 display");
@@ -277,24 +297,38 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r) {
 
     OS_XlibWindow *win = OS_MALLOC(sizeof *win);
 
+    s32 screen = DefaultScreen(dpy);
+    Window root_win = RootWindow(dpy, screen);
     XSetWindowAttributes attr = {0};
     attr.event_mask = ExposureMask | StructureNotifyMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
 
-    win->win = XCreateWindow(
-            dpy, DefaultRootWindow(dpy),
-            0, 0, w, h,
-            0, CopyFromParent, CopyFromParent, CopyFromParent, 
-            CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &attr);
+    XVisualInfo *vi;
+    if (flags & OS_WINDOW_FLAG_OPENGL) {
+        vi = glx_visual_info_get();
+        attr.colormap = XCreateColormap(dpy, root_win, vi->visual, AllocNone);
+        win->win = XCreateWindow(
+                dpy, root_win,
+                0, 0, w, h,
+                0, vi->depth, CopyFromParent, vi->visual, 
+                CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &attr);
+    } else {
+        win->win = XCreateWindow(
+                dpy, root_win,
+                0, 0, w, h,
+                0, CopyFromParent, CopyFromParent, CopyFromParent, 
+                CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &attr);
+    }
     OS_ASSERT(win->win, "failed to create X11 window");
     XStoreName(dpy, win->win, t);
-
-    XMapWindow(dpy, win->win);
-    XFlush(dpy);
 
     win->wm_delete_win = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	OS_ASSERT(XSetWMProtocols(dpy, win->win, &win->wm_delete_win, 1), "failed to get WM_DELETE_WINDOW atom");
 
-    if (!r) {
+    if (flags & OS_WINDOW_FLAG_OPENGL) {
+        glx_init(win, vi);
+    }
+
+    if (!(flags & OS_WINDOW_FLAG_RESIZABLE)) {
         XSizeHints *size_hints = XAllocSizeHints();
         size_hints->flags = PMinSize | PMaxSize;
         size_hints->min_width = size_hints->max_width = w;
@@ -303,6 +337,9 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r) {
         XFree(size_hints);
     }
 
+    XMapWindow(dpy, win->win);
+    XFlush(dpy);
+
     win->w = w;
     win->h = h;
     return (OS_WindowHandle*)win;
@@ -310,6 +347,10 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r) {
 
 void os_window_destroy(OS_WindowHandle *handle) {
     OS_XlibWindow *win = (OS_XlibWindow*)handle;
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    glXMakeCurrent(dpy, None, NULL);
+    glXDestroyContext(dpy, win->gl_ctx);
+#endif
     XDestroyWindow(dpy, win->win);
     OS_FREE(handle);
 }
@@ -479,6 +520,93 @@ void os_window_poll_events(OS_WindowHandle *handle) {
     }
 }
 
+static XVisualInfo *glx_visual_info_get(void) {
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    const s32 attribs[] = {
+        GLX_X_RENDERABLE    , True,
+        GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
+        GLX_RENDER_TYPE     , GLX_RGBA_BIT,
+        GLX_X_VISUAL_TYPE   , GLX_TRUE_COLOR,
+        GLX_RED_SIZE        , 8,
+        GLX_GREEN_SIZE      , 8,
+        GLX_BLUE_SIZE       , 8,
+        GLX_ALPHA_SIZE      , 8,
+        GLX_DEPTH_SIZE      , 24,
+        GLX_STENCIL_SIZE    , 8,
+        GLX_DOUBLEBUFFER    , True,
+        None
+    };
+    const s32 screen = DefaultScreen(dpy);
+
+    s32 fb_count;
+    GLXFBConfig *fb_config = glXChooseFBConfig(dpy, screen, attribs, &fb_count);
+    OS_ASSERT(fb_config, "glXChooseFBConfig failure");
+    
+    s32 best_fb_config_index = -1, worst_fb_config_index = -1, best_num_samp = -1, worst_num_samp = 999;
+    for (s32 i = 0; i < fb_count; ++i)
+    {
+        XVisualInfo *current_visual_info = glXGetVisualFromFBConfig(dpy, fb_config[i]);
+        if (current_visual_info != 0)
+        {
+            int samp_buf, samples;
+            glXGetFBConfigAttrib(dpy, fb_config[i], GLX_SAMPLE_BUFFERS, &samp_buf);
+            glXGetFBConfigAttrib(dpy, fb_config[i], GLX_SAMPLES       , &samples );
+            
+            if (best_fb_config_index < 0 || (samp_buf && samples > best_num_samp))
+            {
+                best_fb_config_index = i;
+                best_num_samp = samples;
+            }
+            if (worst_fb_config_index < 0 || !samp_buf || samples < worst_num_samp)
+                worst_fb_config_index = i;
+            worst_num_samp = samples;
+        }
+        XFree(current_visual_info);
+    }
+    best_fb_config = fb_config[best_fb_config_index];
+    
+    XVisualInfo *visual_info = glXGetVisualFromFBConfig(dpy, best_fb_config);
+    OS_ASSERT(visual_info, "glXGetVisualFromFBConfig failure");
+    XFree(fb_config);
+
+    OS_ASSERT(screen == visual_info->screen, "screen and visual info screen do not match");
+
+    return visual_info;
+#endif
+    return NULL;
+}
+
+static void glx_init(OS_XlibWindow *win, XVisualInfo *vi) {
+#if defined(OS_GL_NEW)
+    glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((GLubyte*)"glXCreateContextAttribsARB");
+    OS_ASSERT(glXCreateContextAttribsARB, "failed to find glXCreateContextAttribsARB, make sure your hardware supports modern GL");
+    //glXSwapIntervalEXT = (glXSwapIntervalEXTProc)glXGetProcAddress((GLubyte*)"glXSwapIntervalEXT");
+    //OS_ASSERT(glXSwapIntervalEXT, "failed to find glXSwapIntervalEXT");
+
+    s32 context_attribs[] = {
+        GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 3,
+        GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+        None
+    };
+
+    win->gl_ctx = glXCreateContextAttribsARB(dpy, best_fb_config, NULL, True, context_attribs);
+    OS_ASSERT(win->gl_ctx, "failed to create GLX context");
+    glXMakeCurrent(dpy, win->win, win->gl_ctx);
+#elif defined(OS_GL_OLD)
+    win->gl_ctx = glXCreateContext(dpy, vi, NULL, True);
+    OS_ASSERT(win->gl_ctx, "failed to create GLX context");
+    glXMakeCurrent(dpy, win->win, win->gl_ctx);
+#endif
+}
+
+void os_gl_swap_buffers(OS_WindowHandle *handle) {
+#if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+    OS_XlibWindow *win = (OS_XlibWindow*)handle;
+    glXSwapBuffers(dpy, win->win);
+#endif
+}
+
 f64 os_time_get(void) {
     struct timespec now_time;
     clock_gettime(CLOCK_MONOTONIC, &now_time);
@@ -512,21 +640,30 @@ typedef struct {
 
 static b32 should_close;
 static u32 win_w, win_h;
-static LRESULT CALLBACK WndProc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam);
+static LRESULT CALLBACK win32_wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam);
 
 static f32 clk_freq;
 static LARGE_INTEGER start_time;
 
-OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, b32 r) {
+OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags flags) {
     OS_Win32Window *win = OS_MALLOC(sizeof *win);
 
     HINSTANCE hinstance = GetModuleHandle(NULL);
     WNDCLASS wnd_class = {0};
     wnd_class.hInstance = hinstance;
     wnd_class.lpszClassName = "os_window_class";
-    wnd_class.lpfnWndProc = WndProc;
+    wnd_class.lpfnWndProc = win32_wnd_proc;
 
-    RegisterClass(&wnd_class);
+    OS_ASSERT(RegisterClass(&wnd_class), "failed to register win32 window class");
+
+    u32 win_style = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX;
+    if (flags & OS_WINDOW_FLAG_RESIZABLE)
+        win_style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+
+    RECT border_rect = {0};
+    AdjustWindowRectEx(&border_rect, win_style, 0, WS_EX_APPWINDOW);
+    w += border_rect.right - border_rect.left;
+    h += border_rect.bottom - border_rect.top;
 
     win->win = CreateWindow(
             wnd_class.lpszClassName, t, WS_OVERLAPPEDWINDOW,
@@ -567,7 +704,7 @@ void os_window_poll_events(OS_WindowHandle *handle) {
     }
 }
 
-static LRESULT CALLBACK WndProc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam) {
+static LRESULT CALLBACK win32_wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam) {
     OS_InputState *input_state = os_input_state_get();
 
     switch (msg) {
@@ -640,7 +777,7 @@ OS_DynLib *os_dynlib_load(const char *path) {
 }
 
 void os_dynlib_unload(OS_DynLib *handle) {
-    UnloadLibrary((HMODULE)handle);
+    FreeLibrary((HMODULE)handle);
 }
 
 void *os_dynlib_proc_address_get(OS_DynLib *handle, const char *name) {
