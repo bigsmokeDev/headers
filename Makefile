@@ -1,7 +1,7 @@
 CC = clang
 
 CCFLAGS = -std=c99 -Wall -D_GNU_SOURCE
-LDFLAGS = -lX11 -lGLX
+LDFLAGS = -lX11 -lGLX -lGL
 
 all: build
 

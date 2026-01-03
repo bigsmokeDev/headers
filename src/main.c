@@ -2,14 +2,15 @@
 #include <stdlib.h>
 
 #define OS_IMPL
-//#define OS_GL_OLD
-#define OS_GL_NEW
+#define OS_GL_OLD
+//#define OS_GL_NEW
 #include "os.h"
 
 #include <GL/gl.h>
 
 int main(int argc, char *argv[]) {
     OS_WindowHandle *win = os_window_create(800, 600, "test", OS_WINDOW_FLAG_OPENGL);
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
     while (!os_window_should_close(win)) {
         os_window_poll_events(win);
@@ -27,7 +28,15 @@ int main(int argc, char *argv[]) {
         }
 
         glClear(GL_COLOR_BUFFER_BIT);
-        glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+
+        glBegin(GL_TRIANGLES);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glVertex2f(0.0f, 0.5f);
+        glColor3f(0.0f, 1.0f, 0.0f);
+        glVertex2f(-0.5f, -0.5f);
+        glColor3f(0.0f, 0.0f, 1.0f);
+        glVertex2f(0.5f, -0.5f);
+        glEnd();
 
         os_input_update();
         os_gl_swap_buffers(win);

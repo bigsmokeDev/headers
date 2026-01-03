@@ -809,8 +809,10 @@ static void wgl_init(OS_Win32Window *win) {
         dummy_wnd_class.lpfnWndProc = DefWindowProc;
         dummy_wnd_class.hInstance = GetModuleHandle(NULL);
         dummy_wnd_class.lpszClassName = "dummy window class";
+        RegisterClass(&dummy_wnd_class);
+
         dummy_win = CreateWindow(dummy_wnd_class.lpszClassName, "dummy window", 0, 0, 0, 100, 100, 0, 0, dummy_wnd_class.hInstance, 0);
-        OS_ASSERT(dummy_dc, "failed to create win32 dummy window");
+        OS_ASSERT(dummy_win, "failed to create win32 dummy window");
         dummy_dc = GetDC(dummy_win);
         OS_ASSERT(dummy_dc, "failed to get win32 dummy device context");
 
@@ -820,7 +822,7 @@ static void wgl_init(OS_Win32Window *win) {
         SetPixelFormat(dummy_dc, spf_index, &spfd);
 
         dummy_gl_ctx = wglCreateContext(dummy_dc);
-        OS_ASSERT(dummy_gl_ctx, "failed to create WGL context");
+        OS_ASSERT(dummy_gl_ctx, "failed to create WGL dummy context");
         wglMakeCurrent(dummy_dc, dummy_gl_ctx);
     }
 
