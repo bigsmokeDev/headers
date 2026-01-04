@@ -1,5 +1,65 @@
-// TODO(smoke): put some docs up here
-// TODO(smoke): add GL context creation (GLX, WGL)
+/*
+
+    os.h is a simple C99 wrapper that handles windows, input, GL context creation and dynamic libraries.
+    NOTE: os.h does not handle loading GL functions, you still have to load your own GL functions (e.g GLAD).
+
+    BUILDING:
+    - on GNU/Linux: -lX11
+                    -lGLX # if using OS_GL_NEW or OS_GL_OLD
+                    -lGL # if using GL/gl.h
+    - on Windows: -luser32
+                  -lgdi32 # if using OS_GL_NEW or OS_GL_OLD
+                  -lopengl32 # if using GL/gl.h
+
+    USAGE:
+    example of using os.h:
+#include <stdio.h>
+#include <stdlib.h>
+
+#define OS_IMPL
+#define OS_GL_OLD // for GL 1/2 context
+#define OS_GL_NEW // for GL 3/4 context
+#include "os.h"
+
+int main(int argc, char *argv[]) {
+    OS_WindowHandle *win = os_window_create(800, 600, "test", OS_WINDOW_FLAG_OPENGL | OS_WINDOW_FLAG_RESIZABLE);
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+
+    while (!os_window_should_close(win)) {
+        os_window_poll_events(win);
+
+        if (os_input_is_key_pressed(OS_KEY_E) || os_input_is_mouse_button_pressed(OS_MOUSE_BUTTON_LEFT)) {
+            f32 mouse_pos[2];
+            os_input_mouse_pos_get(mouse_pos);
+            printf("%f,%f\n", mouse_pos[0], mouse_pos[1]);
+        }
+
+        if (os_input_is_key_pressed(OS_KEY_SPACE)) {
+            u32 win_size[2];
+            os_window_size_get(win, win_size);
+            printf("%d,%d\n", win_size[0], win_size[1]);
+        }
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glBegin(GL_TRIANGLES);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glVertex2f(0.0f, 0.5f);
+        glColor3f(0.0f, 1.0f, 0.0f);
+        glVertex2f(-0.5f, -0.5f);
+        glColor3f(0.0f, 0.0f, 1.0f);
+        glVertex2f(0.5f, -0.5f);
+        glEnd();
+
+        os_input_update();
+        os_gl_swap_buffers(win);
+    }
+
+    os_window_destroy(win);
+    return 0;
+}
+
+*/
 
 #ifndef OS_H
 #define OS_H
@@ -225,6 +285,7 @@ void os_window_poll_events(OS_WindowHandle *handle);
 void os_window_size_get(OS_WindowHandle *handle, u32 *size);
 
 #if defined(OS_GL_NEW) || defined(OS_GL_OLD)
+void *os_gl_proc_address_get(const char *name);
 void os_gl_swap_buffers(OS_WindowHandle *handle);
 #endif
 
@@ -600,6 +661,10 @@ static void glx_init(OS_XlibWindow *win, XVisualInfo *vi) {
 #endif
 }
 
+void *os_gl_proc_address_get(const char *name) {
+    return glXGetProcAddress(name);
+}
+
 void os_gl_swap_buffers(OS_WindowHandle *handle) {
 #if defined(OS_GL_NEW) || defined(OS_GL_OLD)
     OS_XlibWindow *win = (OS_XlibWindow*)handle;
@@ -893,6 +958,10 @@ static void wgl_init(OS_Win32Window *win) {
     OS_ASSERT(win->gl_ctx, "failed to create WGL context");
     wglMakeCurrent(win->dc, win->gl_ctx);
 #endif
+}
+
+void *os_gl_proc_address_get(const char *name) {
+    return wglGetProcAddress(name);
 }
 
 void os_gl_swap_buffers(OS_WindowHandle *handle) {
