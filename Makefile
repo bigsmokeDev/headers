@@ -1,12 +1,12 @@
 CC = clang
 
 CCFLAGS = -std=c99 -Wall -D_GNU_SOURCE
-LDFLAGS = -lX11 -lGLX -lGL
+LDFLAGS = -lX11
 
 all: build
 
 build:
-	$(CC) $(CCFLAGS) $(LDFLAGS) -O0 -g \
+	$(CC) $(CCFLAGS) $(LDFLAGS) -O0 -g -fsanitize=address \
 		-o bin/out src/main.c
 	./bin/out
 

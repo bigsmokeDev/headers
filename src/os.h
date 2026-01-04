@@ -4,6 +4,7 @@
     NOTE: os.h does not handle loading GL functions, you still have to load your own GL functions (e.g GLAD).
 
     BUILDING:
+    - include stdio.h and stdlib.h before using os.h
     - on GNU/Linux: -lX11
                     -lGLX # if using OS_GL_NEW or OS_GL_OLD
                     -lGL # if using GL/gl.h
@@ -63,12 +64,6 @@ int main(int argc, char *argv[]) {
 
 #ifndef OS_H
 #define OS_H
-
-#if defined(_WIN32)
-#define OS_WIN32
-#elif defined(__gnu_linux__)
-#define OS_XLIB
-#endif
 
 // custom malloc/free
 #if !defined(OS_MALLOC) && !defined(OS_FREE)
@@ -353,7 +348,7 @@ static void glx_init(OS_XlibWindow *win, XVisualInfo *vis);
 OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags flags) {
     if (!dpy) {
         dpy = XOpenDisplay(NULL);
-        OS_ASSERT(dpy, "failed to open X11 display");
+        OS_ASSERT(dpy, "failed to open X11 display\n");
     }
 
     OS_XlibWindow *win = OS_MALLOC(sizeof *win);
@@ -379,11 +374,11 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags fl
                 0, CopyFromParent, CopyFromParent, CopyFromParent, 
                 CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &attr);
     }
-    OS_ASSERT(win->win, "failed to create X11 window");
+    OS_ASSERT(win->win, "failed to create X11 window\n");
     XStoreName(dpy, win->win, t);
 
     win->wm_delete_win = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
-	OS_ASSERT(XSetWMProtocols(dpy, win->win, &win->wm_delete_win, 1), "failed to get WM_DELETE_WINDOW atom");
+	OS_ASSERT(XSetWMProtocols(dpy, win->win, &win->wm_delete_win, 1), "failed to get WM_DELETE_WINDOW atom\n");
 
     if (flags & OS_WINDOW_FLAG_OPENGL) {
         glx_init(win, vi);
@@ -601,7 +596,7 @@ static XVisualInfo *glx_visual_info_get(void) {
 
     s32 fb_count;
     GLXFBConfig *fb_config = glXChooseFBConfig(dpy, screen, attribs, &fb_count);
-    OS_ASSERT(fb_config, "glXChooseFBConfig failure");
+    OS_ASSERT(fb_config, "glXChooseFBConfig failure\n");
     
     s32 best_fb_config_index = -1, worst_fb_config_index = -1, best_num_samp = -1, worst_num_samp = 999;
     for (s32 i = 0; i < fb_count; ++i)
@@ -627,10 +622,10 @@ static XVisualInfo *glx_visual_info_get(void) {
     best_fb_config = fb_config[best_fb_config_index];
     
     XVisualInfo *visual_info = glXGetVisualFromFBConfig(dpy, best_fb_config);
-    OS_ASSERT(visual_info, "glXGetVisualFromFBConfig failure");
+    OS_ASSERT(visual_info, "glXGetVisualFromFBConfig failure\n");
     XFree(fb_config);
 
-    OS_ASSERT(screen == visual_info->screen, "screen and visual info screen do not match");
+    OS_ASSERT(screen == visual_info->screen, "screen and visual info screen do not match\n");
 
     return visual_info;
 #endif
@@ -640,7 +635,7 @@ static XVisualInfo *glx_visual_info_get(void) {
 static void glx_init(OS_XlibWindow *win, XVisualInfo *vi) {
 #if defined(OS_GL_NEW)
     glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((GLubyte*)"glXCreateContextAttribsARB");
-    OS_ASSERT(glXCreateContextAttribsARB, "failed to find glXCreateContextAttribsARB, make sure your hardware supports modern GL");
+    OS_ASSERT(glXCreateContextAttribsARB, "failed to find glXCreateContextAttribsARB, make sure your hardware supports modern GL\n");
     //glXSwapIntervalEXT = (glXSwapIntervalEXTProc)glXGetProcAddress((GLubyte*)"glXSwapIntervalEXT");
     //OS_ASSERT(glXSwapIntervalEXT, "failed to find glXSwapIntervalEXT");
 
@@ -652,11 +647,11 @@ static void glx_init(OS_XlibWindow *win, XVisualInfo *vi) {
     };
 
     win->gl_ctx = glXCreateContextAttribsARB(dpy, best_fb_config, NULL, True, context_attribs);
-    OS_ASSERT(win->gl_ctx, "failed to create GLX context");
+    OS_ASSERT(win->gl_ctx, "failed to create GLX context\n");
     glXMakeCurrent(dpy, win->win, win->gl_ctx);
 #elif defined(OS_GL_OLD)
     win->gl_ctx = glXCreateContext(dpy, vi, NULL, True);
-    OS_ASSERT(win->gl_ctx, "failed to create GLX context");
+    OS_ASSERT(win->gl_ctx, "failed to create GLX context\n");
     glXMakeCurrent(dpy, win->win, win->gl_ctx);
 #endif
 }
@@ -732,7 +727,7 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags fl
     wnd_class.lpszClassName = "os_window_class";
     wnd_class.lpfnWndProc = win32_wnd_proc;
 
-    OS_ASSERT(RegisterClass(&wnd_class), "failed to register win32 window class");
+    OS_ASSERT(RegisterClass(&wnd_class), "failed to register win32 window class\n");
 
     u32 win_style = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX;
     if (flags & OS_WINDOW_FLAG_RESIZABLE)
@@ -748,7 +743,7 @@ OS_WindowHandle *os_window_create(u32 w, u32 h, const char *t, OS_WindowFlags fl
             CW_USEDEFAULT, CW_USEDEFAULT, w, h,
             NULL, NULL, hinstance, NULL
             );
-    OS_ASSERT(win->win, "failed to create Win32 window");
+    OS_ASSERT(win->win, "failed to create Win32 window\n");
 
     ShowWindow(win->win, SW_SHOW);
 
@@ -771,7 +766,7 @@ void os_window_destroy(OS_WindowHandle *handle) {
     OS_Win32Window *win = (OS_WindowHandle*)handle;
     ReleaseDC(win->win, win->dc);
     DestroyWindow(win->win);
-    free(handle);
+    OS_FREE(handle);
 }
 
 b32 os_window_should_close(OS_WindowHandle *handle) {
@@ -877,9 +872,9 @@ static void wgl_init(OS_Win32Window *win) {
         RegisterClass(&dummy_wnd_class);
 
         dummy_win = CreateWindow(dummy_wnd_class.lpszClassName, "dummy window", 0, 0, 0, 100, 100, 0, 0, dummy_wnd_class.hInstance, 0);
-        OS_ASSERT(dummy_win, "failed to create win32 dummy window");
+        OS_ASSERT(dummy_win, "failed to create win32 dummy window\n");
         dummy_dc = GetDC(dummy_win);
-        OS_ASSERT(dummy_dc, "failed to get win32 dummy device context");
+        OS_ASSERT(dummy_dc, "failed to get win32 dummy device context\n");
 
         s32 spf_index = ChoosePixelFormat(dummy_dc, &pfd);
         PIXELFORMATDESCRIPTOR spfd = {0};
@@ -887,14 +882,14 @@ static void wgl_init(OS_Win32Window *win) {
         SetPixelFormat(dummy_dc, spf_index, &spfd);
 
         dummy_gl_ctx = wglCreateContext(dummy_dc);
-        OS_ASSERT(dummy_gl_ctx, "failed to create WGL dummy context");
+        OS_ASSERT(dummy_gl_ctx, "failed to create WGL dummy context\n");
         wglMakeCurrent(dummy_dc, dummy_gl_ctx);
     }
 
     wglCreateContextAttribsARB = (wglCreateContextAttribsARBProc)wglGetProcAddress("wglCreateContextAttribsARB");
-    OS_ASSERT(wglCreateContextAttribsARB, "failed to get wglCreateContextAttribsARB, make sure your hardware supports modern gl");
+    OS_ASSERT(wglCreateContextAttribsARB, "failed to get wglCreateContextAttribsARB, make sure your hardware supports modern gl\n");
     wglChoosePixelFormatARB = (wglChoosePixelFormatARBProc)wglGetProcAddress("wglChoosePixelFormatARB");
-    OS_ASSERT(wglChoosePixelFormatARB, "failed to get wglChoosePixelFormatARB");
+    OS_ASSERT(wglChoosePixelFormatARB, "failed to get wglChoosePixelFormatARB\n");
 
     {
         wglMakeCurrent(dummy_dc, 0);
@@ -924,10 +919,10 @@ static void wgl_init(OS_Win32Window *win) {
     s32 pf;
     u32 num_formats;
     wglChoosePixelFormatARB(win->dc, attribs, 0, 1, &pf, &num_formats);
-    OS_ASSERT(num_formats, "failed to create a pixel format for WGL");
+    OS_ASSERT(num_formats, "failed to create a pixel format for WGL\n");
 
     DescribePixelFormat(win->dc, pf, sizeof pf, &pfd2);
-    OS_ASSERT(SetPixelFormat(win->dc, pf, &pfd2), "failed to set WGL pixel format");
+    OS_ASSERT(SetPixelFormat(win->dc, pf, &pfd2), "failed to set WGL pixel format\n");
 
     s32 ctx_attribs[] = {
         0x2091, 3, // WGL_CONTEXT_MAJOR_VERSION_ARB
@@ -947,7 +942,7 @@ static void wgl_init(OS_Win32Window *win) {
     pfd.iLayerType = PFD_MAIN_PLANE;
 
     win->dc = GetDC(win->win);
-    OS_ASSERT(win->dc, "failed to get win32 device context");
+    OS_ASSERT(win->dc, "failed to get win32 device context\n");
 
     s32 spf_index = ChoosePixelFormat(win->dc, &pfd);
     PIXELFORMATDESCRIPTOR spfd = {0};
@@ -955,7 +950,7 @@ static void wgl_init(OS_Win32Window *win) {
     SetPixelFormat(win->dc, spf_index, &spfd);
 
     win->gl_ctx = wglCreateContext(win->dc);
-    OS_ASSERT(win->gl_ctx, "failed to create WGL context");
+    OS_ASSERT(win->gl_ctx, "failed to create WGL context\n");
     wglMakeCurrent(win->dc, win->gl_ctx);
 #endif
 }
