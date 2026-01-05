@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
         ds_dynarr_append(int, &arr, i + 1);
     for (int i = 0; i < arr.len; i++)
         printf("%d\n", arr.data[i]);
-    ds_dynarr_destroy(int, &arr);
+    ds_dynarr_destroy(arr);
 
     return 0;
 }

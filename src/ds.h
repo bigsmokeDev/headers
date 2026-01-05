@@ -48,9 +48,12 @@ void ds_arena_destroy(DS_Arena *arena);
 void *ds_arena_alloc(DS_Arena *arena, u32 size);
 void ds_arena_reset(DS_Arena *arena);
 
+#define ds_dynarr_destroy(dynarr)\
+    dynarr.cap = 0;\
+    dynarr.len = 0;\
+    DS_FREE(dynarr.data);
 #define DS_DYNARR_DEFAULT_CAP 16
 #define ds_dynarr(type) type##_dynarr
-#define ds_dynarr_destroy(type, dynarr) type##_dynarr_destroy(dynarr)
 #define ds_dynarr_resize(type, dynarr, len) type##_dynarr_resize(dynarr, len)
 #define ds_dynarr_reserve(type, dynarr, len) type##_dynarr_reserve(dynarr, len)
 #define ds_dynarr_append(type, dynarr, value) type##_dynarr_append(dynarr, value)
@@ -70,11 +73,6 @@ void ds_arena_reset(DS_Arena *arena);
     void type##_dynarr_unordered_remove(type##_dynarr *dynarr, u32 index);
 
 #define ds_dynarr_impl(type)\
-    void type##_dynarr_destroy(type##_dynarr *dynarr) {\
-        dynarr->len = 0;\
-        dynarr->cap = 0;\
-        DS_FREE(dynarr->data);\
-    }\
     void type##_dynarr_resize(type##_dynarr *dynarr, u32 len) {\
         dynarr->data = DS_REALLOC(dynarr->data, sizeof(type) * len);\
         DS_ASSERT(dynarr->data, "failed to reserve %lu byte for dynamic array\n", sizeof(type) * len);\
