@@ -4,6 +4,7 @@
     NOTE: os.h does not handle loading GL functions, you still have to load your own GL functions (e.g GLAD).
 
     BUILDING:
+    - define OS_IMPL before including os.h
     - include stdio.h and stdlib.h before using os.h
     - on GNU/Linux: -lX11
                     -lGLX # if using OS_GL_NEW or OS_GL_OLD
