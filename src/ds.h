@@ -57,6 +57,7 @@ void ds_arena_reset(DS_Arena *arena);
 #define ds_dynarr_resize(type, dynarr, len) type##_dynarr_resize(dynarr, len)
 #define ds_dynarr_reserve(type, dynarr, len) type##_dynarr_reserve(dynarr, len)
 #define ds_dynarr_append(type, dynarr, value) type##_dynarr_append(dynarr, value)
+#define ds_dynarr_append_at(type, dynarr, value, index) type##_dynarr_append_at(dynarr, value, index)
 #define ds_dynarr_remove(type, dynarr, index) type##_dynarr_remove(dynarr, index)
 #define ds_dynarr_unordered_remove(type, dynarr, index) type##_dynarr_unordered_remove(dynarr, index)
 
@@ -69,6 +70,7 @@ void ds_arena_reset(DS_Arena *arena);
     void type##_dynarr_resize(type##_dynarr *dynarr, u32 len);\
     void type##_dynarr_reserve(type##_dynarr *dynarr, u32 len);\
     void type##_dynarr_append(type##_dynarr *dynarr, type value);\
+    void type##_dynarr_append_at(type##_dynarr *dynarr, type value, u32 index);\
     void type##_dynarr_remove(type##_dynarr *dynarr, u32 index);\
     void type##_dynarr_unordered_remove(type##_dynarr *dynarr, u32 index);
 
@@ -93,6 +95,20 @@ void ds_arena_reset(DS_Arena *arena);
             DS_ASSERT(dynarr->data, "failed to reserve %lu bytes for dynamic array\n", sizeof(type) * dynarr->cap);\
         }\
         dynarr->data[dynarr->len++] = value;\
+    }\
+    void type##_dynarr_append_at(type##_dynarr *dynarr, type value, u32 index) {\
+        DS_ASSERT(index < dynarr->len, "indexing out of bounds in dynamic array");\
+        if (dynarr->len + 1 > dynarr->cap) {\
+            if (dynarr->cap == 0)\
+                dynarr->cap = DS_DYNARR_DEFAULT_CAP;\
+            else\
+                dynarr->cap *= 2;\
+            dynarr->data = DS_REALLOC(dynarr->data, sizeof(type) * dynarr->cap);\
+            DS_ASSERT(dynarr->data, "failed to reserve %lu bytes for dynamic array\n", sizeof(type) * dynarr->cap);\
+        }\
+        dynarr->len++;\
+        memmove(&dynarr->data[index + 1], &dynarr->data[index], sizeof(type) * (dynarr->len - index));\
+        dynarr->data[index] = value;\
     }\
     void type##_dynarr_remove(type##_dynarr *dynarr, u32 index) {\
         DS_ASSERT(index <= dynarr->len, "indexing out of bounds in dynamic array");\

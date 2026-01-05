@@ -12,6 +12,7 @@ int main(int argc, char *argv[]) {
     ds_dynarr(int) arr = {0};
     for (int i = 0; i < 5; i++)
         ds_dynarr_append(int, &arr, i + 1);
+    ds_dynarr_append_at(int, &arr, 69, 2);
     for (int i = 0; i < arr.len; i++)
         printf("%d\n", arr.data[i]);
     ds_dynarr_destroy(arr);
