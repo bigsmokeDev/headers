@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < arr.len; i++)
         printf("%d\n", arr.data[i]);
     ds_dynarr_resize(int, &arr, 2);
-    ds_dynarr_reserve(int, &arr, 2); // now dynarr's capacity is 4
+    ds_dynarr_reserve(int, &arr, 2); // now arr's capacity is 4
     ds_dynarr_destroy(arr);
 
     return 0;
