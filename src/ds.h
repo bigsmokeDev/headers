@@ -198,6 +198,7 @@ void *ds_arena_alloc(DS_Arena *arena, u32 size) {
 
 void ds_arena_reset(DS_Arena *arena) {
     memset(arena->data, 0, arena->cap);
+    arena->offset = 0;
 }
 
 #endif // DS_IMPL
