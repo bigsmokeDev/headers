@@ -3,3 +3,4 @@
 | file | used for |
 |----- |----------|
 | **os.h** | OS wrapper for windows, input, dynamic libs, GL context creation... |
+| **ds.h** | C library with memory arenas and dynamic arrays |
